@@ -1,5 +1,5 @@
+# coding=utf-8
 #!/usr/bin/env python2
-#coding=utf-8
 
 
 """Simple HTTP Server With Upload.
@@ -12,65 +12,64 @@ and HEAD requests in a fairly straightforward manner.
 python http_server.py  8707  > ./http_server.log 2>&1 &
 
 """
- 
- 
+
+
 __version__ = "0.1"
 __all__ = ["SimpleHTTPRequestHandler"]
 __author__ = "bones7456"
 __home_page__ = ""
- 
+
 import os, sys, platform
 import posixpath
 import BaseHTTPServer
 from SocketServer import ThreadingMixIn
-import threading
 import urllib
 import cgi
 import shutil
 import mimetypes
 import re
 import time
- 
- 
+import HTMLParser
+
 try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
-     
- 
+
 print ""
 print '----------------------------------------------------------------------->> '
 try:
-   port = int(sys.argv[1])
+    port = int(sys.argv[1])
 except Exception, e:
-   print '-------->> Warning: Port is not given, will use deafult port: 8000 '
-   print '-------->> if you want to use other port, please execute: '
-   print '-------->> python SimpleHTTPServerWithUpload.py port '
-   print "-------->> port is a integer and it's range: 1024 < port < 65535 "
-   port = 8901
-    
+    print '-------->> Warning: Port is not given, will use deafult port: 8000 '
+    print '-------->> if you want to use other port, please execute: '
+    print '-------->> python SimpleHTTPServerWithUpload.py port '
+    print "-------->> port is a integer and it's range: 1024 < port < 65535 "
+    port = 8901
+
 if not 1024 < port < 65535:  port = 8090
 serveraddr = ('', port)
 print '-------->> Now, listening at port ' + str(port) + ' ...'
 print '-------->> You can visit the URL:   http://localhost:' + str(port)
 print '----------------------------------------------------------------------->> '
 print ""
-     
- 
+
+
 def sizeof_fmt(num):
-    for x in ['bytes','KB','MB','GB']:
+    for x in ['bytes', 'KB', 'MB', 'GB']:
         if num < 1024.0:
             return "%3.1f%s" % (num, x)
         num /= 1024.0
     return "%3.1f%s" % (num, 'TB')
- 
+
+
+#  格式化时间
 def modification_date(filename):
-    # t = os.path.getmtime(filename)
-    # return datetime.datetime.fromtimestamp(t)
-    return time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(os.path.getmtime(filename)))
- 
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(filename)))
+
+
+#  这个类 负责处理请求
 class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
- 
     """Simple HTTP request handler with GET/HEAD/POST commands.
  
     This serves files from the current directory and any of its
@@ -82,9 +81,9 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     request omits the actual contents of the file.
  
     """
- 
+
     server_version = "SimpleHTTPWithUpload/" + __version__
- 
+
     def do_GET(self):
         """Serve a GET request."""
         # print "....................", threading.currentThread().getName()
@@ -92,17 +91,20 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if f:
             self.copyfile(f, self.wfile)
             f.close()
- 
+
     def do_HEAD(self):
         """Serve a HEAD request."""
         f = self.send_head()
         if f:
             f.close()
- 
+
     def do_POST(self):
-        """Serve a POST request."""
+
+        """这里处理文件上传逻辑"""
         r, info = self.deal_post_data()
-        #print r, info, "by: ", self.client_address
+
+        print r, info, "by: ", self.client_address
+
         f = StringIO()
         f.write(b'<!DOCTYPE html>')
         f.write("\n<head>\n<meta charset='UTF-8'>\n")
@@ -114,9 +116,11 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             f.write("<strong>Success:</strong>")
         else:
             f.write("<strong>Failed:</strong>")
-        f.write(info)
-        f.write("<br><a href=\"%s\">back</a>" % self.headers['referer'])
+        f.write(info.encode('utf-8'))
 
+        #   点击返回  href 是返回路径
+
+        f.write("<br><a href=\"%s\">back</a>" % self.headers['referer'])
         f.write("click here</a>.</small></body>\n</html>\n")
         length = f.tell()
         f.seek(0)
@@ -127,8 +131,12 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if f:
             self.copyfile(f, self.wfile)
             f.close()
-         
+
     def deal_post_data(self):
+        """
+          处理POST请求时上传文件的部分
+        """
+        # print self.headers.plisttext
         boundary = self.headers.plisttext.split("=")[1]
         remainbytes = int(self.headers['content-length'])
         line = self.rfile.readline()
@@ -136,6 +144,7 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not boundary in line:
             return (False, "Content NOT begin with boundary")
         line = self.rfile.readline()
+        # print line
         remainbytes -= len(line)
         fn = re.findall(r'Content-Disposition.*name="file"; filename="(.*)"', line)
         if not fn:
@@ -155,11 +164,19 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         remainbytes -= len(line)
         line = self.rfile.readline()
         remainbytes -= len(line)
+
+        http_parser = HTMLParser.HTMLParser()
+        fn = http_parser.unescape(fn)
+        # print "=====开始写入文件==="
+        # print fn
+        # print "=====开始写入文件==="
+
+        # 开始写入文件
         try:
             out = open(fn, 'wb')
         except IOError:
             return (False, "Can't create file to write, do you have permission to write?")
-                 
+
         preline = self.rfile.readline()
         remainbytes -= len(preline)
         while remainbytes > 0:
@@ -176,7 +193,7 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 out.write(preline)
                 preline = line
         return (False, "Unexpect Ends of data.")
- 
+
     def send_head(self):
         """Common code for GET and HEAD commands.
  
@@ -220,15 +237,13 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
         self.end_headers()
         return f
- 
+
+    """
+     展示目录
+    """
+
     def list_directory(self, path):
-        """Helper to produce a directory listing (absent index.html).
- 
-        Return value is either a file object, or None (indicating an
-        error).  In either case, the headers are sent, making the
-        interface the same as for send_head().
- 
-        """
+
         try:
             list = os.listdir(path)
         except os.error:
@@ -252,17 +267,26 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             fullname = os.path.join(path, name)
             colorName = displayname = linkname = name
             # Append / for directories or @ for symbolic links
+
+            # 转成 HTML 实体编码 https://zh.rakko.tools/tools/21/
+            name1 = self.encode_to_html_entities(name.decode('utf-8'))
+            # print "name1:"+name1
             if os.path.isdir(fullname):
-                colorName = '<span style="background-color: #CEFFCE;">' + name + '/</span>'
+                # colorName = '<span style="background-color: #CEFFCE;">' + name1 + '/</span>'
                 displayname = name
                 linkname = name + "/"
             if os.path.islink(fullname):
-                colorName = '<span style="background-color: #FFBFFF;">' + name + '@</span>'
+                # colorName = '<span style="background-color: #FFBFFF;">' + name1 + '@</span>'
                 displayname = name
-                # Note: a link to a directory displays with @ and links with /
+
+
+            # 前端页面显示的name
+            # print "displayname:" + displayname
+            #  前端点击跳转
+            # print "linkname:" + linkname
             filename = os.getcwd() + '/' + displaypath + displayname
             f.write('<table><tr><td width="60%%"><a href="%s">%s</a></td><td width="20%%">%s</td><td width="20%%">%s</td></tr>\n'
-                    % (urllib.quote(linkname), colorName,
+                    % (urllib.quote(linkname), name1,
                         sizeof_fmt(os.path.getsize(filename)), modification_date(filename)))
         f.write("</table>\n<hr>\n</body>\n</html>\n")
         length = f.tell()
@@ -272,7 +296,17 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(length))
         self.end_headers()
         return f
- 
+
+    def encode_to_html_entities(self, text):
+        encoded_text = ""
+        for char in text:
+            if ord(char) > 127:
+                entity = "&#{};".format(ord(char))
+                encoded_text += entity
+            else:
+                encoded_text += char
+        return encoded_text
+
     def translate_path(self, path):
         """Translate a /-separated PATH to the local filename syntax.
  
@@ -294,7 +328,7 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if word in (os.curdir, os.pardir): continue
             path = os.path.join(path, word)
         return path
- 
+
     def copyfile(self, source, outputfile):
         """Copy all data between two file objects.
  
@@ -310,7 +344,7 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
  
         """
         shutil.copyfileobj(source, outputfile)
- 
+
     def guess_type(self, path):
         """Guess the type of a file.
  
@@ -325,7 +359,7 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         slow) to look inside the data to make a better guess.
  
         """
- 
+
         base, ext = posixpath.splitext(path)
         if ext in self.extensions_map:
             return self.extensions_map[ext]
@@ -334,30 +368,30 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.extensions_map[ext]
         else:
             return self.extensions_map['']
- 
+
     if not mimetypes.inited:
         mimetypes.init() # try to read system mime.types
         extensions_map = mimetypes.types_map.copy()
         extensions_map.update({
-        '': 'application/octet-stream', # Default
-        '.py': 'text/plain',
-        '.c': 'text/plain',
-        '.h': 'text/plain',
+            '': 'application/octet-stream',  # Default
+            '.py': 'text/plain',
+            '.c': 'text/plain',
+            '.h': 'text/plain',
         })
- 
+
 class ThreadingServer(ThreadingMixIn, BaseHTTPServer.HTTPServer):
     pass
-     
-def test(HandlerClass = SimpleHTTPRequestHandler,
-       ServerClass = BaseHTTPServer.HTTPServer):
-    BaseHTTPServer.test(HandlerClass, ServerClass)
- 
+
+
 if __name__ == '__main__':
-    # test()
-     
-    #单线程
+    # encoded_str = "&#28404;&#28404;&#20986;&#34892;&#34892;&#31243;&#25253;&#38144;&#21333;.pdf"
+    #                &#28404;&#28404;&#30005;&#23376;&#21457;&#31080;.pdf
+    # decoded_str = html.parser.HTMLParser().unescape(encoded_str)
+    # print(decoded_str)
+
+    # 单线程
     # srvr = BaseHTTPServer.HTTPServer(serveraddr, SimpleHTTPRequestHandler)
-     
-    #多线程
-    srvr = ThreadingServer(serveraddr, SimpleHTTPRequestHandler)
-    srvr.serve_forever() 
+
+    # 多线程
+    ser = ThreadingServer(serveraddr, SimpleHTTPRequestHandler)
+    ser.serve_forever()
